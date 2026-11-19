@@ -428,6 +428,29 @@ class TestUpdateProgram:
         mock_prog.save.assert_called_once()
         mock_prog.admins.set.assert_not_called()
 
+    @patch("apps.mentorship.api.internal.mutations.program.resolve_admins_from_logins")
+    @patch("apps.mentorship.api.internal.mutations.program.Program")
+    def test_update_program_empty_admin_logins_raises_graphql_error(
+        self, mock_program, mock_resolve, mutation
+    ):
+        """GraphQLError when update_program leaves program without admins."""
+        user = MagicMock()
+        info = _make_info(user)
+        input_data = MagicMock(key="prog-1", admin_logins=[], ended_at=None, started_at=None)
+
+        mock_prog = MagicMock()
+        mock_prog.has_admin.return_value = True
+        mock_program.objects.select_for_update.return_value.get.return_value = mock_prog
+        mock_resolve.return_value = set()
+
+        with pytest.raises(GraphQLError) as exc_info:
+            mutation.update_program(info, input_data)
+
+        assert "A mentorship program must retain at least one administrator." in str(exc_info.value)
+        assert exc_info.value.extensions == {"code": "VALIDATION_ERROR", "field": "adminLogins"}
+        mock_prog.save.assert_not_called()
+        mock_prog.admins.set.assert_not_called()
+
     @patch("apps.mentorship.api.internal.mutations.program.Program")
     def test_update_program_with_status(self, mock_program, mutation):
         """Test update with status change."""
